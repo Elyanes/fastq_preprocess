@@ -89,72 +89,69 @@ def concat_results(args, adapter_names, sample_names):
 def main(args):
     sample_list = get_samples(args)
     filtered_fastq = filter_fastq(args, sample_list)
-    loop = 0
     adapter_names = []
 
     with open(args.primers) as file:
         for line in file:
-            cmd_adapter_fwd = ""
-            cmd_adapter_rev = ""
+            loop = 0
+            cmd_adapter_fwd = []
+            cmd_adapter_rev = []
             line = line.split()
             adapter_name = line[0]
             adapter_names.append(adapter_name)
 
             adapters_fwd = line[1].split(",")
-            for adapter_fwd in adapters_fwd:
-                cmd_adapter_fwd = (
-                    cmd_adapter_fwd
-                    + " -g, "
-                    + adapter_fwd
-                    + ";min_overlap="
-                    + str(len(adapter_fwd))
-                    + ","
-                )
             adapters_rev = line[2].split(",")
-            for adapter_rev in adapters_rev:
-                cmd_adapter_rev = (
-                    cmd_adapter_rev
-                    + " -G, "
-                    + adapter_rev
-                    + ";min_overlap="
-                    + str(len(adapter_rev))
-                    + ","
+
+            tuples = [(x, y) for x in adapters_fwd for y in adapters_rev]
+
+            for tuple in tuples:
+                cmd_adapter_fwd.extend(
+                    [
+                        "-g",
+                        f"{tuple[0]};min_overlap={len(tuple[0])}",
+                    ]
+                )
+                cmd_adapter_rev.extend(
+                    [
+                        "-G",
+                        f"{tuple[1]};min_overlap={len(tuple[1])}",
+                    ]
                 )
 
-    for sample in filtered_fastq[2]:
-        R1_fastq = filtered_fastq[0][loop]
-        R2_fastq = filtered_fastq[1][loop]
-        for adapter_name in adapter_names:
-            subprocess.run(
-                [
-                    "cutadapt",
-                    "-j 7",
-                    "-g",
-                    f"{adapter_fwd};min_overlap={len(adapter_fwd)}",
-                    "-G",
-                    f"{adapter_rev};min_overlap={len(adapter_rev)}",
-                    "--pair-adapters",
-                    "-e",
-                    "0",
-                    "--untrimmed-output",
-                    f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.R1.fastq.gz",
-                    "--untrimmed-paired-output",
-                    f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.R2.fastq.gz",
-                    "-o",
-                    f"{args.output}/{sample}/{sample}_{adapter_name}.R1.fastq.gz",
-                    "-p",
-                    f"{args.output}/{sample}/{sample}_{adapter_name}.R2.fastq.gz",
-                    f"{R1_fastq}",
-                    f"{R2_fastq}",
-                ]
-            )
-            if args.keep_untrimmed is False:
-                untrimmed_files = glob.glob(
-                    f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.*"
+            for sample in filtered_fastq[2]:
+                R1_fastq = filtered_fastq[0][loop]
+                R2_fastq = filtered_fastq[1][loop]
+                cutadapt_cmd = ["cutadapt", "-j", "7"]
+                cutadapt_cmd.extend(cmd_adapter_fwd)
+                cutadapt_cmd.extend(cmd_adapter_rev)
+                cutadapt_cmd.extend(
+                    [
+                        "--pair-adapters",
+                        "-e",
+                        "0",
+                        "--untrimmed-output",
+                        f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.R1.fastq.gz",
+                        "--untrimmed-paired-output",
+                        f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.R2.fastq.gz",
+                        "-o",
+                        f"{args.output}/{sample}/{sample}_{adapter_name}.R1.fastq.gz",
+                        "-p",
+                        f"{args.output}/{sample}/{sample}_{adapter_name}.R2.fastq.gz",
+                        R1_fastq,
+                        R2_fastq,
+                    ]
                 )
-                for file in untrimmed_files:
-                    os.remove(file)
-        loop += 1
+
+                subprocess.run(cutadapt_cmd)
+
+                if args.keep_untrimmed is False:
+                    untrimmed_files = glob.glob(
+                        f"{args.output}/{sample}/{sample}_{adapter_name}_untrimmed.*"
+                    )
+                    for file in untrimmed_files:
+                        os.remove(file)
+                loop += 1
 
     concat_results(args, adapter_names, filtered_fastq[2])
 
